@@ -130,6 +130,31 @@ The codegen config introspects from the live Saleor Cloud sandbox URL set in `SA
 
 ---
 
+## GraphQL Query Rules
+
+### No deprecated fields
+
+Never use fields marked `@deprecated` in the generated types. Check `lib/generated/graphql.ts` for the replacement before writing a query. Common Saleor deprecations:
+
+| Deprecated | Use instead |
+|---|---|
+| `product.attributes` | `product.assignedAttributes` |
+| `product.attribute(slug)` | `product.assignedAttribute(slug)` |
+| `product.images` | `product.media` |
+| `availableForPurchase` | `availableForPurchaseAt` |
+
+If TypeScript reports `@deprecated` on a field access, treat it as a hard error — find and use the replacement.
+
+### Always pass `first` / `last` on paginated fields
+
+Every connection field (anything returning `XCountableConnection` or `XCountableEdge`) must include a `first` or `last` argument. Never query an unbounded list. Default page size for test assertions: `first: 20` unless the test specifically needs a different window.
+
+### Typed response interfaces
+
+Every `gqlClient.request<T>()` call must supply a concrete `interface T` for the response shape — never use `any` or omit the type parameter. Define the interface in the same file as the query, using types imported from `lib/generated/graphql`.
+
+---
+
 ## Environment Variables
 
 Required variables (define in `.env`, template in `.env.example`):
