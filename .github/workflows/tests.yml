@@ -48,7 +48,7 @@ jobs:
           SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD }}
 
       - name: Run UI tests (P1)
-        run: npx playwright test --project=ui --passWithNoTests
+        run: npx playwright test --project=ui --pass-with-no-tests
         env:
           SALEOR_API_URL: ${{ secrets.SALEOR_API_URL }}
           SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
@@ -57,7 +57,7 @@ jobs:
           SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD }}
 
       - name: Run A11y tests (P3)
-        run: npx playwright test --project=a11y --passWithNoTests
+        run: npx playwright test --project=a11y --pass-with-no-tests
         env:
           SALEOR_API_URL: ${{ secrets.SALEOR_API_URL }}
           SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}

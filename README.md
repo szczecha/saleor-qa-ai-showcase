@@ -142,6 +142,6 @@ A new test should touch at most 2 files. See `CLAUDE.md` for full conventions.
 
 ## CI
 
-GitHub Actions runs three steps in order: API → UI → A11y. API (P0) failures block the build. UI and A11y steps are present but skipped until tests are written (`--passWithNoTests` keeps CI green on empty directories). Playwright browser binaries are cached at `~/.cache/ms-playwright` to avoid re-downloading on every run (~300 MB).
+GitHub Actions runs three steps in order: API → UI → A11y. API (P0) failures block the build. UI and A11y steps are present but skipped until tests are written (`--pass-with-no-tests` keeps CI green on empty directories). Playwright browser binaries are cached at `~/.cache/ms-playwright` to avoid re-downloading on every run (~300 MB).
 
 When UI tests are added, the `ui` project will gain a `setup` dependency that creates `.auth/staff.json` via the API before browser tests run. The A11y project will depend on `ui` so it inherits the authenticated browser state.
