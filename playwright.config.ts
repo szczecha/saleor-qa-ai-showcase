@@ -28,7 +28,6 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState: '.auth/staff.json',
       },
-      dependencies: ['api'],
     },
     {
       name: 'a11y',
@@ -37,7 +36,6 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState: '.auth/staff.json',
       },
-      dependencies: ['ui'],
     },
   ],
 });

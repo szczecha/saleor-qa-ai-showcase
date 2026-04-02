@@ -73,9 +73,9 @@ Playwright was retained because its `projects` configuration makes API, UI, and 
 ### Positive
 
 - **Single toolchain:** one `playwright.config.ts`, one `package.json`, one CI job definition covers all three layers.
-- **Shared auth state:** `storageState` flows from the API fixture (token creation) → UI layer → A11y layer. Auth is implemented once.
+- **Shared auth state:** `storageState` flows from the API fixture (token creation) → UI layer → A11y layer. Auth is implemented once. *(Not yet active: `dependencies` will be restored in `playwright.config.ts` once a `setup` project creates `.auth/staff.json`. Currently removed to prevent the empty UI/A11y projects from triggering the full API suite.)*
 - **Compile-time schema safety:** `graphql-codegen` regenerates types from Saleor's live schema. Breaking schema changes surface as TypeScript errors before tests run, not as runtime failures in CI.
-- **Cross-layer data flow:** Playwright's `use` fixture chain passes API-created entity IDs (product IDs, checkout IDs) directly into UI and A11y tests without inter-process serialization.
+- **Cross-layer data flow:** Playwright's `use` fixture chain passes API-created entity IDs (product IDs, checkout IDs) directly into UI and A11y tests without inter-process serialization. *(Deferred until UI tests are implemented.)*
 - **`waitForResponse` for SPA safety:** Playwright's `page.waitForResponse` waits on the GraphQL mutation response before asserting, eliminating the optimistic UI false-positive risk.
 
 ### Negative / Trade-offs
