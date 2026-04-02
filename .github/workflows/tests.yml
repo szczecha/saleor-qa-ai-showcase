@@ -45,7 +45,7 @@ jobs:
           SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
           SALEOR_STAFF_EMAIL: ${{ secrets.SALEOR_STAFF_EMAIL }}
           SALEOR_STAFF_PASSWORD: ${{ secrets.SALEOR_STAFF_PASSWORD }}
-          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD }}
+          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD || 'default-channel' }}
 
       - name: Run UI tests (P1)
         run: npx playwright test --project=ui --pass-with-no-tests
@@ -54,7 +54,7 @@ jobs:
           SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
           SALEOR_STAFF_EMAIL: ${{ secrets.SALEOR_STAFF_EMAIL }}
           SALEOR_STAFF_PASSWORD: ${{ secrets.SALEOR_STAFF_PASSWORD }}
-          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD }}
+          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD || 'default-channel' }}
 
       - name: Run A11y tests (P3)
         run: npx playwright test --project=a11y --pass-with-no-tests
@@ -63,7 +63,7 @@ jobs:
           SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
           SALEOR_STAFF_EMAIL: ${{ secrets.SALEOR_STAFF_EMAIL }}
           SALEOR_STAFF_PASSWORD: ${{ secrets.SALEOR_STAFF_PASSWORD }}
-          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD }}
+          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD || 'default-channel' }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

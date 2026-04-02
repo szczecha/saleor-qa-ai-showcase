@@ -22,6 +22,7 @@ A three-layer, single-toolchain QA framework POC for [Saleor Commerce](https://s
 
 ```bash
 npm install
+npm run codegen
 npx playwright install chromium
 ```
 
@@ -74,6 +75,8 @@ Requires `SALEOR_API_URL` to be set in `.env`.
 ---
 
 ## Type-checking
+
+Requires generated types — run `npm run codegen` first if you haven't already.
 
 ```bash
 npm run lint

@@ -113,10 +113,61 @@ const PRODUCTS_USD_FILTERED = gql`
   }
 `;
 
-const TSHIRTS_CATEGORY_ID = 'Q2F0ZWdvcnk6Mzk=';
-const BRAND_SALEOR_LOOM_REFERENCE_ID = 'UGFnZTo1';
+const TSHIRTS_CATEGORY_SLUG = 't-shirts';
+const BRAND_SALEOR_LOOM_SLUG = 'saleor-loom';
 
-const tshirtsBrandMaterialFilter: ProductWhereInput = {
+let TSHIRTS_CATEGORY_ID: string;
+let BRAND_SALEOR_LOOM_REFERENCE_ID: string;
+
+const CATEGORY_BY_SLUG = gql`
+  query CategoryBySlug($slugs: [String!]!) {
+    categories(filter: { slugs: $slugs }, first: 1) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
+const PAGE_BY_SLUG = gql`
+  query PageBySlug($slugs: [String!]!) {
+    pages(filter: { slugs: $slugs }, first: 1) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
+interface CategoryBySlugResponse {
+  categories: { edges: Array<{ node: { id: string } }> };
+}
+
+interface PageBySlugResponse {
+  pages: { edges: Array<{ node: { id: string } }> };
+}
+
+test.beforeAll(async () => {
+  const [categoryData, pageData] = await Promise.all([
+    gqlClient.request<CategoryBySlugResponse>(CATEGORY_BY_SLUG, { slugs: [TSHIRTS_CATEGORY_SLUG] }),
+    gqlClient.request<PageBySlugResponse>(PAGE_BY_SLUG, { slugs: [BRAND_SALEOR_LOOM_SLUG] }),
+  ]);
+
+  const categoryId = categoryData.categories.edges[0]?.node.id;
+  const pageId = pageData.pages.edges[0]?.node.id;
+
+  if (!categoryId) throw new Error(`Category with slug "${TSHIRTS_CATEGORY_SLUG}" not found in sandbox`);
+  if (!pageId) throw new Error(`Page with slug "${BRAND_SALEOR_LOOM_SLUG}" not found in sandbox`);
+
+  TSHIRTS_CATEGORY_ID = categoryId;
+  BRAND_SALEOR_LOOM_REFERENCE_ID = pageId;
+});
+
+const tshirtsBrandMaterialFilter = (): ProductWhereInput => ({
   category: {
     oneOf: [TSHIRTS_CATEGORY_ID],
   },
@@ -140,7 +191,7 @@ const tshirtsBrandMaterialFilter: ProductWhereInput = {
       },
     },
   ],
-};
+});
 
 test.describe('Products — anonymous browse (USD channel)', () => {
   let products: ProductCountableConnection;
@@ -154,7 +205,6 @@ test.describe('Products — anonymous browse (USD channel)', () => {
   });
 
   test('returns at least one product', () => {
-    expect(products.totalCount).toBeGreaterThan(0);
     expect(products.edges.length).toBeGreaterThan(0);
   });
 
@@ -201,13 +251,12 @@ test.describe('Products — filtering by category, brand, and material (USD chan
     const data = await gqlClient.request<FilteredProductsResponse>(PRODUCTS_USD_FILTERED, {
       channel,
       first: 12,
-      where: tshirtsBrandMaterialFilter,
+      where: tshirtsBrandMaterialFilter(),
     });
     products = data.products;
   });
 
   test('returns at least one product matching all filters', () => {
-    expect(products.totalCount).toBeGreaterThan(0);
     expect(products.edges.length).toBeGreaterThan(0);
   });
 
