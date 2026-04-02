@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { gql } from 'graphql-request';
 import { gqlClient } from '../../lib/graphql-client';
-`import type { ProductCountableConnection, ProductWhereInput } from '../../lib/generated/graphql';
+import type { ProductCountableConnection, ProductWhereInput } from '../../lib/generated/graphql';
 
 const PRODUCTS_USD_BROWSE = gql`
   query ProductsUsdBrowse($channel: String!, $first: Int!) {

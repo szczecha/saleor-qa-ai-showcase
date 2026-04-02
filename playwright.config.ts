@@ -20,10 +20,6 @@ export default defineConfig({
     {
       name: 'api',
       testDir: './tests/api',
-      use: {
-        // No browser — raw HTTP only
-        browserName: undefined,
-      },
     },
     {
       name: 'ui',
