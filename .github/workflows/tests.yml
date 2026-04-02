@@ -1,0 +1,76 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: sandbox
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run API tests (P0)
+        run: npx playwright test --project=api
+        env:
+          SALEOR_API_URL: ${{ secrets.SALEOR_API_URL }}
+          SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
+          SALEOR_STAFF_EMAIL: ${{ secrets.SALEOR_STAFF_EMAIL }}
+          SALEOR_STAFF_PASSWORD: ${{ secrets.SALEOR_STAFF_PASSWORD }}
+          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD || 'default-channel' }}
+
+      - name: Run UI tests (P1)
+        run: npx playwright test --project=ui --pass-with-no-tests
+        env:
+          SALEOR_API_URL: ${{ secrets.SALEOR_API_URL }}
+          SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
+          SALEOR_STAFF_EMAIL: ${{ secrets.SALEOR_STAFF_EMAIL }}
+          SALEOR_STAFF_PASSWORD: ${{ secrets.SALEOR_STAFF_PASSWORD }}
+          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD || 'default-channel' }}
+
+      - name: Run A11y tests (P3)
+        run: npx playwright test --project=a11y --pass-with-no-tests
+        env:
+          SALEOR_API_URL: ${{ secrets.SALEOR_API_URL }}
+          SALEOR_DASHBOARD_URL: ${{ secrets.SALEOR_DASHBOARD_URL }}
+          SALEOR_STAFF_EMAIL: ${{ secrets.SALEOR_STAFF_EMAIL }}
+          SALEOR_STAFF_PASSWORD: ${{ secrets.SALEOR_STAFF_PASSWORD }}
+          SALEOR_CHANNEL_USD: ${{ vars.SALEOR_CHANNEL_USD || 'default-channel' }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
