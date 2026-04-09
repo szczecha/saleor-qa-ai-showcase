@@ -14,6 +14,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.SALEOR_DASHBOARD_URL,
     trace: 'on-first-retry',
+    video: 'retain-on-failure', // Change to 'on' to always record
   },
 
   projects: [
