@@ -76,10 +76,16 @@ tests/
     products.test.ts                    # Product list & filter queries (P0)
     checkout-delivery.test.ts           # Checkout + shipping workflow (P0)
     checkout-click-and-collect.test.ts  # Checkout + pickup workflow (P0)
-  ui/               # Dashboard UI tests — empty, awaiting implementation
-  a11y/             # Accessibility scans — empty, awaiting implementation
-  .auth/            # Generated authenticated browser state (added to .gitignore)
-    staff.json      # Saved storageState for authenticated Dashboard access
+  ui/
+    product-creation.test.ts            # Create product & variant (P1)
+    order-creation.test.ts              # Create draft order (P1)
+    page-objects/
+      base.page.ts                      # Shared utilities: waitForGraphQLMutation, assertNoErrorToast, selectFromCombobox
+      product-creation.page.ts          # Page object for product creation flows
+      order-creation.page.ts            # Page object for order creation flows
+  a11y/                                 # Accessibility scans — awaiting implementation
+  .auth/                                # Generated authenticated browser state (added to .gitignore)
+    staff.json                          # Saved storageState for authenticated Dashboard access
 lib/
   test-data.ts              # SANDBOX_SLUGS: centralized sandbox item slugs (categories, collections, etc.)
   graphql-client.ts         # Unauthenticated + authenticated GraphQL clients
@@ -92,6 +98,8 @@ codegen.ts            # graphql-codegen config — introspects live SALEOR_API_U
 ```
 
 **lib/ pattern:** Shared GraphQL operations, fragments, and setup helpers live here. Anything used by more than one test file or needed for multi-test setup goes in lib/. This keeps tests focused and avoids duplication. New utility functions should go here, not in individual test files.
+
+**tests/ui/page-objects/ pattern:** All page objects extend `BasePage` to inherit shared utilities for GraphQL mutation waiting, error checking, form selection, and navigation. Each test file has a corresponding page object to encapsulate browser interactions (keeps tests readable and reusable).
 
 ---
 
@@ -115,7 +123,7 @@ Use semantic locators in this priority order: `getByRole()` → `getByLabel()` �
 
 ### Timing (UI tests)
 
-Always call `page.waitForResponse()` on the GraphQL mutation response before asserting. Never assert immediately after a click or form submit — the Dashboard uses optimistic UI. See `/ui-test` skill for the optimistic UI pattern and timing rules.
+Always wait for GraphQL mutation responses before asserting. Never assert immediately after a click or form submit — the Dashboard uses optimistic UI. Use `BasePage.waitForGraphQLMutation(operationName)` in page objects, or `BasePage.waitForAnyGraphQLMutation()` for unknown mutations. See `/ui-test` skill for detailed patterns and timing rules.
 
 ### Authentication
 
@@ -137,7 +145,7 @@ Every checkout test creates its own `checkoutId`. Never reuse checkout IDs betwe
 expect(data.tokenCreate.errors).toHaveLength(0);
 ```
 
-**UI tests:** After every Dashboard mutation, assert that no error toast is visible before making further assertions. See `/ui-test` skill for the error checking pattern.
+**UI tests:** After every Dashboard mutation, assert that no error toast is visible before making further assertions. Use `BasePage.assertNoErrorToast()` in page objects. See `/ui-test` skill for the error checking pattern.
 
 This is non-negotiable — mutations can appear to succeed but actually fail at the server level.
 
@@ -171,7 +179,7 @@ P0 failures must block CI. P1–P3 are advisory at POC stage.
 - Flakiness rate < 5%
 - API suite < 2 minutes
 - Full suite (API + UI + A11y) < 10 minutes
-- Adding a new test touches ≤ 2 files
+- Adding a new test touches ≤ 3 files (test, page object, GraphQL operations)
 - No false positives (test passes when feature is broken)
 
 ---
