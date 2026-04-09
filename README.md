@@ -95,6 +95,7 @@ tests/
   ui/                             # Dashboard browser tests (Playwright)
   a11y/                           # Axe-core accessibility scans
 lib/
+  test-data.ts                    # Centralized sandbox item slugs (categories, collections, etc.)
   graphql-client.ts               # Unauthenticated + authenticated GraphQL clients
   checkout-operations.ts          # Reusable checkout GraphQL fragments
   generated/graphql.ts            # Auto-generated types — do not edit by hand
@@ -138,6 +139,8 @@ Two delivery variants covered:
 2. Write the GraphQL operation in the test file (or in `lib/` if shared). Run `npm run codegen` to generate types.
 3. Define a typed response interface using the generated types. Pass it as `gqlClient.request<T>()`.
 4. Use `test.describe` + `test.beforeAll` for setup, plain `test()` for assertions.
+
+**For UI tests:** Use the `/ui-test` skill for detailed patterns on locators, data setup, optimistic UI waits, and slug-based queries.
 
 A new test should touch at most 2 files. See `CLAUDE.md` for full conventions.
 

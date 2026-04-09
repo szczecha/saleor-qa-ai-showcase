@@ -16,6 +16,13 @@ Technology decisions: [docs/adr/ADR-001-technology-stack.md](docs/adr/ADR-001-te
 
 ---
 
+## AI Assistant Skills
+
+When writing tests, use these skills to guide implementation:
+- **`/ui-test`** — Detailed UI test patterns, locator strategies, data setup (create vs. reuse), slug-based queries, page objects, anti-patterns
+
+---
+
 ## Common Commands
 
 ```bash
@@ -74,6 +81,7 @@ tests/
   .auth/            # Generated authenticated browser state (added to .gitignore)
     staff.json      # Saved storageState for authenticated Dashboard access
 lib/
+  test-data.ts              # SANDBOX_SLUGS: centralized sandbox item slugs (categories, collections, etc.)
   graphql-client.ts         # Unauthenticated + authenticated GraphQL clients
   auth-fixtures.ts          # getStaffToken() — cached staff auth per suite run
   checkout-operations.ts    # Shared checkout GraphQL fragments & mutations
@@ -92,22 +100,22 @@ codegen.ts            # graphql-codegen config — introspects live SALEOR_API_U
 ### Layer separation — never cross these boundaries
 
 - **API tests** (`tests/api/`): no browser, no `page`, no DOM. Raw GraphQL only.
-- **UI tests** (`tests/ui/`): no `graphql-request` calls in the test body. Data setup goes in fixtures via API calls.
+- **UI tests** (`tests/ui/`): no `graphql-request` calls in the test body. Data setup goes in fixtures via API calls. See `/ui-test` skill for detailed patterns.
 - **A11y tests** (`tests/a11y/`): only axe scanning and keyboard navigation. Inherit auth state from the UI layer via `storageState`.
 
 ### Data ownership
 
 - Read-only data (channels, shipping methods, sample products, existing customers): use what's already in the Saleor Cloud sandbox.
 - Test-owned data (anything mutated, deleted, or whose existence must be guaranteed): create via API in `beforeAll`/`beforeEach`, clean up after the suite.
-- **UI tests never create test data through the browser** unless the creation flow itself is what's being tested.
+- **UI tests never create test data through the browser** unless the creation flow itself is what's being tested. See `/ui-test` skill for the two data setup patterns (create vs. reuse) and slug-based queries.
 
-### Selectors
+### Selectors (UI tests)
 
-Always use `data-testid`, `aria-*`, or visible text selectors. Never use dynamic CSS class names (MUI/styled-components generate them at runtime).
+Use semantic locators in this priority order: `getByRole()` → `getByLabel()` → `getByPlaceholder()` → `getByText()` → `getByTestId()`. Never use dynamic CSS class names (MUI/styled-components generate them at runtime). See `/ui-test` skill for detailed locator strategy and examples.
 
-### Timing
+### Timing (UI tests)
 
-Always call `page.waitForResponse()` on the GraphQL mutation response before asserting in UI tests. Never assert immediately after a click or form submit — the Dashboard uses optimistic UI.
+Always call `page.waitForResponse()` on the GraphQL mutation response before asserting. Never assert immediately after a click or form submit — the Dashboard uses optimistic UI. See `/ui-test` skill for the optimistic UI pattern and timing rules.
 
 ### Authentication
 
@@ -124,15 +132,12 @@ Every checkout test creates its own `checkoutId`. Never reuse checkout IDs betwe
 
 ### Error checking
 
-After every GraphQL mutation, assert that `data.X.errors` is empty:
+**API tests:** After every GraphQL mutation, assert that `data.X.errors` is empty:
 ```ts
 expect(data.tokenCreate.errors).toHaveLength(0);
 ```
 
-After every Dashboard mutation, assert that no error toast is visible before making further assertions:
-```ts
-await expect(page.locator('[role="alert"]')).not.toBeVisible();
-```
+**UI tests:** After every Dashboard mutation, assert that no error toast is visible before making further assertions. See `/ui-test` skill for the error checking pattern.
 
 This is non-negotiable — mutations can appear to succeed but actually fail at the server level.
 
