@@ -30,7 +30,7 @@ export default defineConfig({
       testDir: './tests/ui',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: '.auth/staff.json',
+        storageState: 'tests/.auth/staff.json',
       },
       dependencies: ['setup'],
     },
@@ -39,7 +39,7 @@ export default defineConfig({
       testDir: './tests/a11y',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: '.auth/staff.json',
+        storageState: 'tests/.auth/staff.json',
       },
       dependencies: ['setup'],
     },
