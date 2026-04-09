@@ -25,10 +25,11 @@ npm run codegen                      # Generate types from live Saleor schema
 npx playwright install chromium      # Install Playwright browsers
 
 # Testing
-npm test                             # Run all tests (API → UI → A11y)
+npm test                             # Run all tests (setup → API → UI → A11y)
 npm run test:api                     # API layer only
-npm run test:ui                      # Dashboard UI layer
-npm run test:a11y                    # Accessibility layer
+npm run test:ui                      # Dashboard UI layer (requires setup first)
+npm run test:a11y                    # Accessibility layer (requires setup first)
+npx playwright test --project=setup  # Generate authenticated browser state only
 npx playwright test --project=api --grep "checkout"  # Run single test or pattern
 
 # Debugging
@@ -62,18 +63,22 @@ Do **not** introduce: Apollo Client, urql, Jest, Mocha, Cypress, Chai, or visual
 
 ```
 tests/
+  setup/
+    auth.setup.ts                       # Playwright setup project — generates .auth/staff.json
   api/
     products.test.ts                    # Product list & filter queries (P0)
     checkout-delivery.test.ts           # Checkout + shipping workflow (P0)
     checkout-click-and-collect.test.ts  # Checkout + pickup workflow (P0)
   ui/               # Dashboard UI tests — empty, awaiting implementation
   a11y/             # Accessibility scans — empty, awaiting implementation
+  .auth/            # Generated authenticated browser state (added to .gitignore)
+    staff.json      # Saved storageState for authenticated Dashboard access
 lib/
   graphql-client.ts         # Unauthenticated + authenticated GraphQL clients
   auth-fixtures.ts          # getStaffToken() — cached staff auth per suite run
   checkout-operations.ts    # Shared checkout GraphQL fragments & mutations
   generated/graphql.ts      # Auto-generated types from Saleor schema (do not edit)
-playwright.config.ts  # Single config with projects: api, ui, a11y
+playwright.config.ts  # Single config with projects: setup, api, ui, a11y
 codegen.ts            # graphql-codegen config — introspects live SALEOR_API_URL
 .env.example          # Environment variable template
 ```
@@ -106,7 +111,12 @@ Always call `page.waitForResponse()` on the GraphQL mutation response before ass
 
 ### Authentication
 
-Use Playwright `storageState` per worker for Dashboard auth. Never share auth state across tests or workers. Centralize staff token creation in `lib/auth-fixtures.ts` — one token per suite run, not one per test.
+Dashboard auth uses Playwright `storageState`. UI and A11y projects load authenticated state automatically from `.auth/staff.json` before running. The `setup` project (run first by default) generates this state file by:
+1. Calling `tokenCreate` GraphQL mutation via API (no browser)
+2. Injecting the refreshToken into browser localStorage
+3. Saving the authenticated browser state to `.auth/staff.json`
+
+This ensures a single, efficient login that's reused across all UI/A11y tests. Never manually log in during UI tests — the auth state is pre-loaded.
 
 ### Checkout isolation
 
@@ -213,11 +223,13 @@ Never commit `.env`. Never hardcode these values anywhere in the codebase.
 
 Key settings in `playwright.config.ts` that affect test behavior:
 
-- **`fullyParallel: true`** — Tests run in parallel within each project. Tests in different projects (api, ui, a11y) run sequentially per the order in the config.
+- **`fullyParallel: true`** — Tests run in parallel within each project. Tests in different projects (setup, api, ui, a11y) run sequentially per the order in the config.
 - **`workers: 2` (CI) / undefined (local)** — CI limits to 2 workers to avoid overwhelming the Saleor sandbox. Locally, Playwright uses all CPUs.
 - **`retries: 1` (CI) / 0 (local)** — CI retries flaky tests once. Locally, tests fail immediately (faster feedback).
 - **`trace: 'on-first-retry'`** — Playwright captures a trace file (DOM, network, screenshots) only on the first retry, not on success.
-- **`storageState: '.auth/staff.json'` (ui, a11y)** — UI and A11y projects load authenticated browser state from this file. The file is created by the API layer during setup (see Authentication Setup below).
+- **`setup` project** — Runs first. Generates `.auth/staff.json` by authenticating via API and saving browser state.
+- **`storageState: '.auth/staff.json'` (ui, a11y)** — UI and A11y projects load authenticated browser state from this file. The `setup` project creates it.
+- **`dependencies: ['setup']` (ui, a11y)** — UI and A11y projects wait for the setup project to complete before running.
 
 ---
 
@@ -225,16 +237,27 @@ Key settings in `playwright.config.ts` that affect test behavior:
 
 **For UI and A11y tests to run, authenticated browser state must exist at `.auth/staff.json`.**
 
-The flow:
-1. **API tests run first** — They're unauthenticated, no state file needed.
-2. **UI/A11y tests need auth** — `playwright.config.ts` specifies `storageState: '.auth/staff.json'` for these projects.
-3. **State file creation** — Currently manual; in future, add a `setup` project to `playwright.config.ts` that:
-   - Calls `getStaffToken()` from `lib/auth-fixtures.ts` via GraphQL API
-   - Logs into the Dashboard with the token
-   - Saves the browser storage state (cookies, localStorage) to `.auth/staff.json`
-4. **Cache invalidation** — If Dashboard login starts failing, delete `.auth/staff.json` and regenerate (or wait for setup automation).
+The setup is **automated**:
+1. **Setup project runs first** (`tests/setup/auth.setup.ts`):
+   - Calls the `tokenCreate` GraphQL mutation via `gqlClient` (unauthenticated, no browser)
+   - Extracts the **refreshToken** from the response
+   - Creates a browser context and navigates to the Dashboard
+   - Injects the refreshToken into localStorage under the key `_saleorRefreshToken`
+   - Saves the authenticated browser state to `.auth/staff.json` using `context.storageState()`
+   - Closes the context (no browser left behind)
 
-See `lib/auth-fixtures.ts` for how tokens are cached per suite run.
+2. **UI and A11y projects load the state**:
+   - `storageState: '.auth/staff.json'` in `playwright.config.ts` auto-loads the state
+   - Each test worker gets the authenticated browser pre-loaded (no login in tests)
+
+3. **Cache invalidation**:
+   - Delete `.auth/staff.json` and re-run `npm test` to regenerate
+   - The setup project always creates a fresh token on each run (not cached between runs)
+
+**Key implementation details:**
+- Setup uses `refreshToken` (not `token`) — the Dashboard expects `_saleorRefreshToken` in localStorage
+- See `tests/setup/auth.setup.ts` for the full implementation
+- See `lib/auth-fixtures.ts` for token caching within test suites (different from setup token generation)
 
 ---
 
@@ -245,14 +268,20 @@ See `lib/auth-fixtures.ts` for how tokens are cached per suite run.
 - Run `npm run codegen` again.
 - If the endpoint is unreachable, codegen will hang. Kill it (`Ctrl+C`) and check the URL.
 
+**Setup project fails during token creation**
+- Check that `SALEOR_API_URL` is correct and the GraphQL endpoint is reachable
+- Verify `SALEOR_STAFF_EMAIL` and `SALEOR_STAFF_PASSWORD` are valid staff credentials
+- Run the setup project in isolation to see detailed error logs: `npx playwright test --project=setup --reporter=list`
+
 **Tests fail with `graphql-request` errors or 401 Unauthorized**
 - For API tests: Verify `SALEOR_API_URL` in `.env`.
 - For authenticated API calls: Check that `getStaffToken()` succeeded; see test output for token creation errors.
 - Staff credentials (`SALEOR_STAFF_EMAIL`, `SALEOR_STAFF_PASSWORD`) may be stale or incorrect.
 
 **UI/A11y tests fail immediately with "Could not find a browser instance"**
-- `.auth/staff.json` is missing or stale. Regenerate by running `npm test` (which will fail on UI/A11y steps but create the file via API setup, if setup automation is in place).
-- Alternatively, run `npx playwright test --project=api` alone, then manually log into the Dashboard and save browser state.
+- `.auth/staff.json` is missing or stale. Regenerate by running the setup project: `npx playwright test --project=setup`
+- Or run `npm test` to generate the file automatically before UI tests run.
+- If setup fails, check that `SALEOR_STAFF_EMAIL` and `SALEOR_STAFF_PASSWORD` are correct in `.env`.
 
 **Tests timeout or hang**
 - Check `playwright.config.ts` for timeout settings (default 30s per test).
@@ -274,7 +303,8 @@ See `lib/auth-fixtures.ts` for how tokens are cached per suite run.
 ## CI (GitHub Actions)
 
 - Cache `~/.cache/ms-playwright` to avoid re-downloading browser binaries (~300 MB) on every run.
-- Run API layer first, then UI, then A11y (top-down dependency order).
+- Run in order: setup → API → UI → A11y (project dependencies enforce this automatically).
+- The setup project runs once per CI job and generates `.auth/staff.json` for all subsequent UI/A11y tests.
 - P0 test failures block merge. P1–P3 are informational.
 
 ---

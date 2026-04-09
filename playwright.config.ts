@@ -18,6 +18,10 @@ export default defineConfig({
 
   projects: [
     {
+      name: 'setup',
+      testMatch: '**/setup/*.setup.ts',
+    },
+    {
       name: 'api',
       testDir: './tests/api',
     },
@@ -28,6 +32,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState: '.auth/staff.json',
       },
+      dependencies: ['setup'],
     },
     {
       name: 'a11y',
@@ -36,6 +41,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState: '.auth/staff.json',
       },
+      dependencies: ['setup'],
     },
   ],
 });
