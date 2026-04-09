@@ -71,7 +71,7 @@ Do **not** introduce: Apollo Client, urql, Jest, Mocha, Cypress, Chai, or visual
 ```
 tests/
   setup/
-    auth.setup.ts                       # Playwright setup project — generates .auth/staff.json
+    auth.setup.ts                       # Playwright setup project — generates tests/.auth/staff.json
   api/
     products.test.ts                    # Product list & filter queries (P0)
     checkout-delivery.test.ts           # Checkout + shipping workflow (P0)
@@ -119,10 +119,10 @@ Always call `page.waitForResponse()` on the GraphQL mutation response before ass
 
 ### Authentication
 
-Dashboard auth uses Playwright `storageState`. UI and A11y projects load authenticated state automatically from `.auth/staff.json` before running. The `setup` project (run first by default) generates this state file by:
+Dashboard auth uses Playwright `storageState`. UI and A11y projects load authenticated state automatically from `tests/.auth/staff.json` before running. The `setup` project (run first by default) generates this state file by:
 1. Calling `tokenCreate` GraphQL mutation via API (no browser)
 2. Injecting the refreshToken into browser localStorage
-3. Saving the authenticated browser state to `.auth/staff.json`
+3. Saving the authenticated browser state to `tests/.auth/staff.json`
 
 This ensures a single, efficient login that's reused across all UI/A11y tests. Never manually log in during UI tests — the auth state is pre-loaded.
 
@@ -232,15 +232,15 @@ Key settings in `playwright.config.ts` that affect test behavior:
 - **`workers: 2` (CI) / undefined (local)** — CI limits to 2 workers to avoid overwhelming the Saleor sandbox. Locally, Playwright uses all CPUs.
 - **`retries: 1` (CI) / 0 (local)** — CI retries flaky tests once. Locally, tests fail immediately (faster feedback).
 - **`trace: 'on-first-retry'`** — Playwright captures a trace file (DOM, network, screenshots) only on the first retry, not on success.
-- **`setup` project** — Runs first. Generates `.auth/staff.json` by authenticating via API and saving browser state.
-- **`storageState: '.auth/staff.json'` (ui, a11y)** — UI and A11y projects load authenticated browser state from this file. The `setup` project creates it.
+- **`setup` project** — Runs first. Generates `tests/.auth/staff.json` by authenticating via API and saving browser state.
+- **`storageState: 'tests/.auth/staff.json'` (ui, a11y)** — UI and A11y projects load authenticated browser state from this file. The `setup` project creates it.
 - **`dependencies: ['setup']` (ui, a11y)** — UI and A11y projects wait for the setup project to complete before running.
 
 ---
 
 ## Authentication Setup
 
-**For UI and A11y tests to run, authenticated browser state must exist at `.auth/staff.json`.**
+**For UI and A11y tests to run, authenticated browser state must exist at `tests/.auth/staff.json`.**
 
 The setup is **automated**:
 1. **Setup project runs first** (`tests/setup/auth.setup.ts`):
@@ -248,15 +248,15 @@ The setup is **automated**:
    - Extracts the **refreshToken** from the response
    - Creates a browser context and navigates to the Dashboard
    - Injects the refreshToken into localStorage under the key `_saleorRefreshToken`
-   - Saves the authenticated browser state to `.auth/staff.json` using `context.storageState()`
+   - Saves the authenticated browser state to `tests/.auth/staff.json` using `context.storageState()`
    - Closes the context (no browser left behind)
 
 2. **UI and A11y projects load the state**:
-   - `storageState: '.auth/staff.json'` in `playwright.config.ts` auto-loads the state
+   - `storageState: 'tests/.auth/staff.json'` in `playwright.config.ts` auto-loads the state
    - Each test worker gets the authenticated browser pre-loaded (no login in tests)
 
 3. **Cache invalidation**:
-   - Delete `.auth/staff.json` and re-run `npm test` to regenerate
+   - Delete `tests/.auth/staff.json` and re-run `npm test` to regenerate
    - The setup project always creates a fresh token on each run (not cached between runs)
 
 **Key implementation details:**
@@ -284,7 +284,7 @@ The setup is **automated**:
 - Staff credentials (`SALEOR_STAFF_EMAIL`, `SALEOR_STAFF_PASSWORD`) may be stale or incorrect.
 
 **UI/A11y tests fail immediately with "Could not find a browser instance"**
-- `.auth/staff.json` is missing or stale. Regenerate by running the setup project: `npx playwright test --project=setup`
+- `tests/.auth/staff.json` is missing or stale. Regenerate by running the setup project: `npx playwright test --project=setup`
 - Or run `npm test` to generate the file automatically before UI tests run.
 - If setup fails, check that `SALEOR_STAFF_EMAIL` and `SALEOR_STAFF_PASSWORD` are correct in `.env`.
 
@@ -309,7 +309,7 @@ The setup is **automated**:
 
 - Cache `~/.cache/ms-playwright` to avoid re-downloading browser binaries (~300 MB) on every run.
 - Run in order: setup → API → UI → A11y (project dependencies enforce this automatically).
-- The setup project runs once per CI job and generates `.auth/staff.json` for all subsequent UI/A11y tests.
+- The setup project runs once per CI job and generates `tests/.auth/staff.json` for all subsequent UI/A11y tests.
 - P0 test failures block merge. P1–P3 are informational.
 
 ---
