@@ -97,17 +97,4 @@ export class OrderCreationPage extends BasePage {
     await finalizeBtn.click();
     await mutationPromise;
   }
-
-  async assertOrderStatus(status: string) {
-    await expect(this.page.locator('[data-test-id="status-info"]')).toBeVisible();
-    await expect(this.page.locator('[data-test-id="status-info"]').getByText(status)).toBeVisible();
-  }
-
-  async assertCustomerSet(customerEmail: string) {
-    await expect(this.page.getByText(customerEmail)).toBeVisible();
-  }
-
-  async assertShippingMethod(method: string) {
-    await expect(this.page.getByText(new RegExp(`Shipping.*${method}`))).toBeVisible();
-  }
 }

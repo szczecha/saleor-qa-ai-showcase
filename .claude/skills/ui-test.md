@@ -77,7 +77,38 @@ const input = page.locator('input.jss-34 ~ label');
 
 The Saleor Dashboard renders changes optimistically before the server confirms. **Never assert immediately after a click or form submit.**
 
-**Pattern:**
+**Pattern: Using BasePage Helper (Recommended)**
+
+Extend `BasePage` in your page objects to use the built-in `waitForGraphQLMutation()` helper:
+
+```typescript
+import { BasePage } from './base.page';
+
+class ProductPage extends BasePage {
+  async saveProduct() {
+    const mutationPromise = this.waitForGraphQLMutation('ProductCreate');
+    await this.page.getByRole('button', { name: /save/i }).click();
+    await mutationPromise; // Waits for response with operationName='ProductCreate'
+  }
+}
+
+// In test:
+const productPage = new ProductPage(page);
+productId = await productPage.saveProduct();
+```
+
+**Pattern: Direct waitForResponse (If Mutation Name Unknown)**
+
+When mutation operation name is not available, use `waitForAnyGraphQLMutation()`:
+
+```typescript
+const mutationPromise = this.waitForAnyGraphQLMutation();
+await this.page.getByRole('button', { name: /confirm/i }).click();
+await mutationPromise;
+```
+
+**Manual Pattern (Legacy):**
+
 ```typescript
 const responsePromise = page.waitForResponse(response => 
   response.url().includes('graphql') && 
@@ -382,54 +413,120 @@ Before writing any test, use the Playwright MCP or Inspector to explore the Dash
 
 ---
 
-## Page Objects (Optional for POC)
+## Page Objects (Recommended Pattern)
 
-Page Objects are optional but recommended for repeated interactions. If used:
+All page objects should **extend `BasePage`** to inherit shared utilities: `waitForGraphQLMutation()`, `assertNoErrorToast()`, `selectFromCombobox()`, and `goto()`.
 
 **DO:**
-- Expose **intent-level methods** (`loginAs()`, `createProduct()`, `goToProductList()`)
-- **Hide implementation details** — locators are private
-- **Return the page or next page object** for method chaining
-- Keep a method focused — one action, one assertion at most
+- Extend `BasePage` for access to mutation waiting and error checking helpers
+- Expose **intent-level methods** (`fillProductName()`, `createProduct()`, `goToProductList()`)
+- **Hide implementation details** — locators are private to the page object
+- Keep methods focused — one user action per method
+- Use `waitForGraphQLMutation(operationName)` for known mutations
+- Call `assertNoErrorToast()` after mutations before returning
 
 **DON'T:**
 - Store mutable state across navigations
-- Put test data inside Page Objects (use fixtures)
+- Put test data inside Page Objects (use test fixtures/beforeAll)
 - Create generic "click" or "fill" helpers — too low-level
 - Mix API calls into Page Objects
+- Duplicate GraphQL mutation waiting logic — use BasePage helpers
 
-**Example:**
+**Example: ProductCreationPage**
 ```typescript
-class ProductPage {
-  constructor(private page: Page) {}
+import { BasePage } from './base.page';
+
+export class ProductCreationPage extends BasePage {
+  constructor(page: Page) {
+    super(page);
+  }
+
+  async navigateToCreateProduct() {
+    await this.goto('/products');
+    await this.page.getByRole('button', { name: 'Create Product' }).click();
+  }
+
+  async selectProductType(productType: string) {
+    await this.selectFromCombobox('Product type', productType);
+    await this.page.getByRole('button', { name: 'Confirm' }).click();
+  }
 
   async fillProductName(name: string) {
-    await this.page.getByLabel('Product Name').fill(name);
+    await this.page.getByRole('textbox', { name: 'Name' }).fill(name);
   }
 
-  async selectProductType(typeName: string) {
-    await this.page.getByLabel('Product Type').click();
-    await this.page.getByRole('option', { name: typeName }).click();
-  }
-
-  async save() {
-    const responsePromise = this.page.waitForResponse(r => r.url().includes('graphql'));
-    await this.page.getByRole('button', { name: /save/i }).click();
-    await responsePromise;
-    return new ProductListPage(this.page);
-  }
-
-  private async checkErrors() {
-    await expect(this.page.locator('[role="alert"]:has-text("Error")')).not.toBeVisible();
+  async saveProduct() {
+    const mutationPromise = this.waitForGraphQLMutation('ProductCreate');
+    await this.page.getByRole('button', { name: 'Save' }).click();
+    await mutationPromise;
+    await this.assertNoErrorToast();
+    const response = await mutationPromise;
+    const responseData = await response.json();
+    return responseData.data.productCreate.product.id;
   }
 }
 
-// Usage:
-const productPage = new ProductPage(page);
+// Usage in test:
+const productPage = new ProductCreationPage(page);
+await productPage.navigateToCreateProduct();
+await productPage.selectProductType('Shoe');
 await productPage.fillProductName('Test Product');
-await productPage.selectProductType('Clothing');
-const listPage = await productPage.save();
+const productId = await productPage.saveProduct();
 ```
+
+**Example: OrderCreationPage**
+```typescript
+import { BasePage } from './base.page';
+
+export class OrderCreationPage extends BasePage {
+  async navigateToOrders(dashboardUrl: string) {
+    await this.page.goto(`${dashboardUrl}/orders`);
+  }
+
+  async selectChannel(channelName: string) {
+    const channelInput = this.page.locator('input[data-test-id="channel-autocomplete"]');
+    await channelInput.click();
+    await this.page.locator('li').filter({ hasText: channelName }).click();
+
+    const mutationPromise = this.waitForGraphQLMutation('OrderDraftCreate');
+    await this.page.getByRole('button', { name: 'Confirm' }).first().click();
+    await mutationPromise;
+  }
+
+  async addProducts(productCount: number = 2) {
+    await this.page.getByRole('button', { name: 'Add products' }).click();
+    const firstCheckbox = this.page.locator('table tbody tr').first().locator('input[type="checkbox"]');
+    await firstCheckbox.check();
+
+    for (let i = 1; i < productCount; i++) {
+      await this.page.locator('table tbody tr').nth(i + 1).locator('input[type="checkbox"]').check();
+    }
+
+    const mutationPromise = this.waitForGraphQLMutation('OrderLinesAdd');
+    await this.page.getByRole('button', { name: 'Confirm' }).first().click();
+    await mutationPromise;
+  }
+}
+
+// Usage in test:
+const orderPage = new OrderCreationPage(page);
+await orderPage.navigateToOrders(dashboardUrl);
+await orderPage.selectChannel('Channel-USD');
+await orderPage.addProducts(2);
+// Assertions remain in test body:
+await expect(page.getByText('Unfulfilled')).toBeVisible();
+```
+
+**BasePage Shared Utilities:**
+
+| Method | Purpose |
+|---|---|
+| `waitForGraphQLMutation(operationName)` | Wait for GraphQL mutation by operation name (e.g., `'ProductCreate'`) |
+| `waitForAnyGraphQLMutation()` | Wait for any POST to graphql endpoint (when mutation name is unknown) |
+| `assertNoErrorToast()` | Assert error toast is not visible |
+| `selectFromCombobox(label, optionText)` | Select from accessible combobox by label |
+| `selectFromComboboxById(id, optionText)` | Select from combobox by ID (for attribute dropdowns) |
+| `goto(path)` | Navigate to Dashboard path (e.g., `/products`) |
 
 ---
 
@@ -437,15 +534,19 @@ const listPage = await productPage.save();
 
 | Anti-pattern | Why | Fix |
 |---|---|---|
-| `page.waitForTimeout()` | Masks timing bugs; makes flaky tests slower | Use `waitForSelector()`, `waitForResponse()`, or `expect().toBeVisible()` |
+| `page.waitForTimeout()` | Masks timing bugs; makes flaky tests slower | Use `waitForSelector()`, `waitForResponse()` or `waitForGraphQLMutation()`, or `expect().toBeVisible()` |
 | `.first()` / `.nth()` without contract | Brittle to UI reordering; assumes order | Use semantic locators or `getByRole()` with name filters; query by slug |
 | Hardcoded IDs or URLs | Breaks on schema changes | Use env vars (`SALEOR_DASHBOARD_URL`) and dynamic IDs from API |
 | Hardcoded slugs in tests | Slugs must be centralized for maintainability | Store slugs in `lib/test-data.ts`; import and reference from there |
 | Querying by `first: 1` to get ID | Assumes first item exists or is the right one | Query by slug using `category(slug: "...")`, `collection(slug: "...")`, etc. |
 | `graphql-request` in test body | Violates layer separation | Move to `beforeAll` / `beforeEach` |
-| Assertion without error check | Mutations can fail silently | Always check error toasts first |
+| Assertion without error check | Mutations can fail silently | Always check error toasts first with `assertNoErrorToast()` |
 | Reusing test data between tests | Creates order dependencies | Use `beforeAll` to seed each test independently |
 | Manual login in UI tests | Auth state pre-loaded; wastes time | Use `storageState` (auto-loaded from `.auth/staff.json`) |
+| Duplicating `waitForResponse()` logic in tests | Error-prone and unreadable | Extend `BasePage` and use `waitForGraphQLMutation(operationName)` |
+| Assertions hidden in page objects | Hides test intent; makes debugging harder | Keep assertions in test body; page objects focus on interactions only |
+| Page objects calling API (`gqlClient`) | Violates layer separation | Data setup goes in test's `beforeAll`; page objects are UI-only |
+| Hardcoding combobox/dropdown selectors | Fragile to UI changes | Use `selectFromCombobox()` or `selectFromComboboxById()` from `BasePage` |
 
 ---
 
@@ -453,25 +554,34 @@ const listPage = await productPage.save();
 
 ```
 tests/ui/
-  products.test.ts        # Product creation, list, edit flows
-  orders.test.ts          # Draft order creation, status updates
-  vouchers.test.ts        # Voucher creation and list
-  [feature].test.ts       # One test file per feature area
+  product-creation.test.ts    # Product creation and variant flows
+  order-creation.test.ts      # Draft order creation, status updates
+  [feature].test.ts           # One test file per feature area
+  page-objects/
+    base.page.ts              # Shared utilities: waitForGraphQLMutation, selectFromCombobox, etc.
+    product-creation.page.ts  # Page object for product creation flows
+    order-creation.page.ts    # Page object for order creation flows
+    [feature].page.ts         # One page object per test file (as needed)
 
 lib/
-  test-data.ts            # SANDBOX_SLUGS: centralized slugs for categories, collections, etc.
+  test-data.ts                # SANDBOX_SLUGS: centralized slugs for categories, collections, etc.
   graphql/
-    products.ts           # Product mutations (CREATE_PRODUCT, UPDATE_PRODUCT, etc.)
-    orders.ts             # Order mutations (CREATE_DRAFT_ORDER, etc.)
-    vouchers.ts           # Voucher mutations
-    categories.ts         # Category queries (GET_CATEGORY by slug, etc.)
-    collections.ts        # Collection queries (GET_COLLECTION by slug, etc.)
-  page-objects/
-    ProductPage.ts        # (Optional) Reusable page object for product forms
-    OrderPage.ts          # (Optional) Reusable page object for order flows
+    products.ts               # Product mutations (CREATE_PRODUCT, UPDATE_PRODUCT, etc.)
+    orders.ts                 # Order mutations (CREATE_DRAFT_ORDER, etc.)
+    vouchers.ts               # Voucher mutations
+    categories.ts             # Category queries (GET_CATEGORY by slug, etc.)
+    collections.ts            # Collection queries (GET_COLLECTION by slug, etc.)
 ```
 
-**Rule:** A new test should touch ≤ 2 files (the test file + optionally a new GraphQL operation or page object).
+**Rule:** A new test should touch ≤ 3 files:
+1. The test file (`tests/ui/[feature].test.ts`)
+2. The page object (optional, `tests/ui/page-objects/[feature].page.ts`)
+3. A new GraphQL operation (if needed, in `lib/graphql/`)
+
+**Page Object Hierarchy:**
+- All page objects inherit from `BasePage` (`tests/ui/page-objects/base.page.ts`)
+- `BasePage` provides utilities for mutation waiting, error checking, form selection, and navigation
+- Feature-specific page objects extend `BasePage` with domain methods
 
 **Slug queries:** Always reference slugs from `lib/test-data.ts`, never hardcode them in tests.
 
@@ -481,15 +591,35 @@ lib/
 
 Before submitting a UI test:
 
-- [ ] Data setup via API in `beforeAll`, not in test body
+**Page Objects & Mutations:**
+- [ ] Page object extends `BasePage` to inherit shared utilities
+- [ ] Mutations use `waitForGraphQLMutation(operationName)` from BasePage
+- [ ] `assertNoErrorToast()` called after mutations before returning
+- [ ] Assertions remain in test body, not hidden in page objects
+
+**Locators & Selectors:**
 - [ ] All locators use `getByRole()`, `getByLabel()`, `getByTestId()` — no CSS classes
-- [ ] `page.waitForResponse()` called before asserting mutations
-- [ ] Error toast checked before positive assertions
-- [ ] No `waitForTimeout()`, `.first()/.nth()` without contract, or hardcoded IDs
-- [ ] `storageState` pre-loads auth — no manual login
-- [ ] Test file imports operations from `lib/graphql/`, not inline
+- [ ] Combobox selection uses `selectFromCombobox()` or `selectFromComboboxById()` from BasePage
+- [ ] No `.first()/.nth()` without documented positional contract
+- [ ] No `waitForTimeout()`, hardcoded IDs, or dynamic class names
+
+**Data & Auth:**
+- [ ] Data setup via API in `beforeAll`, not in test body
+- [ ] `storageState` pre-loads auth — no manual login in tests
+- [ ] Test data is isolated per suite (don't share between tests)
+
+**File Organization:**
+- [ ] Test file uses page objects (not inline interactions)
+- [ ] Page objects live in `tests/ui/page-objects/`
+- [ ] Each test file has one corresponding page object (e.g., `product-creation.test.ts` ↔ `product-creation.page.ts`)
+- [ ] GraphQL operations imported from `lib/graphql/`, not inline
 - [ ] Each test file covers one feature area
+
+**Test Quality:**
 - [ ] Tests run in any order and don't share state
+- [ ] Slug data comes from `lib/test-data.ts`, never hardcoded
+- [ ] All GraphQL mutations are awaited with response waiting
+- [ ] Error state is checked before positive assertions
 
 ---
 
