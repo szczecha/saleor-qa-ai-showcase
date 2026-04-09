@@ -1,6 +1,6 @@
-# CLAUDE.md — Saleor QA AI Showcase
+# CLAUDE.md
 
-This file contains instructions for AI assistants working on this project.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ---
 
@@ -13,6 +13,29 @@ A three-layer, single-toolchain QA framework POC for Saleor Commerce (Saleor Clo
 
 Full strategy: [QA_STRATEGY.md](QA_STRATEGY.md)  
 Technology decisions: [docs/adr/ADR-001-technology-stack.md](docs/adr/ADR-001-technology-stack.md)
+
+---
+
+## Common Commands
+
+```bash
+# Setup
+npm install                          # Install dependencies
+npm run codegen                      # Generate types from live Saleor schema
+npx playwright install chromium      # Install Playwright browsers
+
+# Testing
+npm test                             # Run all tests (API → UI → A11y)
+npm run test:api                     # API layer only
+npm run test:ui                      # Dashboard UI layer
+npm run test:a11y                    # Accessibility layer
+npx playwright test --project=api --grep "checkout"  # Run single test or pattern
+
+# Debugging
+npm run lint                         # Type-check code (requires codegen first)
+npx playwright test --project=api --debug            # Open Playwright Inspector
+npx playwright codegen https://saleor.io             # Generate selectors (external site example)
+```
 
 ---
 
@@ -39,17 +62,23 @@ Do **not** introduce: Apollo Client, urql, Jest, Mocha, Cypress, Chai, or visual
 
 ```
 tests/
-  api/          # GraphQL API tests — no browser, raw HTTP only
-  ui/           # Dashboard UI tests — Playwright browser
-  a11y/         # Accessibility scans — axe-core inside Playwright
+  api/
+    products.test.ts                    # Product list & filter queries (P0)
+    checkout-delivery.test.ts           # Checkout + shipping workflow (P0)
+    checkout-click-and-collect.test.ts  # Checkout + pickup workflow (P0)
+  ui/               # Dashboard UI tests — empty, awaiting implementation
+  a11y/             # Accessibility scans — empty, awaiting implementation
 lib/
-  graphql-client.ts   # Typed GraphQL wrapper (used by all API tests)
-  api-fixtures.ts     # API setup/teardown helpers
-  auth-fixtures.ts    # Staff token creation, storageState management
+  graphql-client.ts         # Unauthenticated + authenticated GraphQL clients
+  auth-fixtures.ts          # getStaffToken() — cached staff auth per suite run
+  checkout-operations.ts    # Shared checkout GraphQL fragments & mutations
+  generated/graphql.ts      # Auto-generated types from Saleor schema (do not edit)
 playwright.config.ts  # Single config with projects: api, ui, a11y
-codegen.ts            # graphql-codegen config
-.env.example          # Template — no real secrets ever committed
+codegen.ts            # graphql-codegen config — introspects live SALEOR_API_URL
+.env.example          # Environment variable template
 ```
+
+**lib/ pattern:** Shared GraphQL operations, fragments, and setup helpers live here. Anything used by more than one test file or needed for multi-test setup goes in lib/. This keeps tests focused and avoids duplication. New utility functions should go here, not in individual test files.
 
 ---
 
@@ -85,7 +114,17 @@ Every checkout test creates its own `checkoutId`. Never reuse checkout IDs betwe
 
 ### Error checking
 
-After every GraphQL mutation, assert that `data.X.errors` is empty. After every Dashboard mutation, assert that no error toast is visible:
+After every GraphQL mutation, assert that `data.X.errors` is empty:
+```ts
+expect(data.tokenCreate.errors).toHaveLength(0);
+```
+
+After every Dashboard mutation, assert that no error toast is visible before making further assertions:
+```ts
+await expect(page.locator('[role="alert"]')).not.toBeVisible();
+```
+
+This is non-negotiable — mutations can appear to succeed but actually fail at the server level.
 
 
 ### No hardcoded values in tests
@@ -167,6 +206,68 @@ SALEOR_STAFF_PASSWORD=   # Staff account password
 ```
 
 Never commit `.env`. Never hardcode these values anywhere in the codebase.
+
+---
+
+## Playwright Configuration
+
+Key settings in `playwright.config.ts` that affect test behavior:
+
+- **`fullyParallel: true`** — Tests run in parallel within each project. Tests in different projects (api, ui, a11y) run sequentially per the order in the config.
+- **`workers: 2` (CI) / undefined (local)** — CI limits to 2 workers to avoid overwhelming the Saleor sandbox. Locally, Playwright uses all CPUs.
+- **`retries: 1` (CI) / 0 (local)** — CI retries flaky tests once. Locally, tests fail immediately (faster feedback).
+- **`trace: 'on-first-retry'`** — Playwright captures a trace file (DOM, network, screenshots) only on the first retry, not on success.
+- **`storageState: '.auth/staff.json'` (ui, a11y)** — UI and A11y projects load authenticated browser state from this file. The file is created by the API layer during setup (see Authentication Setup below).
+
+---
+
+## Authentication Setup
+
+**For UI and A11y tests to run, authenticated browser state must exist at `.auth/staff.json`.**
+
+The flow:
+1. **API tests run first** — They're unauthenticated, no state file needed.
+2. **UI/A11y tests need auth** — `playwright.config.ts` specifies `storageState: '.auth/staff.json'` for these projects.
+3. **State file creation** — Currently manual; in future, add a `setup` project to `playwright.config.ts` that:
+   - Calls `getStaffToken()` from `lib/auth-fixtures.ts` via GraphQL API
+   - Logs into the Dashboard with the token
+   - Saves the browser storage state (cookies, localStorage) to `.auth/staff.json`
+4. **Cache invalidation** — If Dashboard login starts failing, delete `.auth/staff.json` and regenerate (or wait for setup automation).
+
+See `lib/auth-fixtures.ts` for how tokens are cached per suite run.
+
+---
+
+## Troubleshooting
+
+**Type generation fails with "Cannot find module" or schema error**
+- Ensure `SALEOR_API_URL` is set in `.env` and points to a live Saleor GraphQL endpoint.
+- Run `npm run codegen` again.
+- If the endpoint is unreachable, codegen will hang. Kill it (`Ctrl+C`) and check the URL.
+
+**Tests fail with `graphql-request` errors or 401 Unauthorized**
+- For API tests: Verify `SALEOR_API_URL` in `.env`.
+- For authenticated API calls: Check that `getStaffToken()` succeeded; see test output for token creation errors.
+- Staff credentials (`SALEOR_STAFF_EMAIL`, `SALEOR_STAFF_PASSWORD`) may be stale or incorrect.
+
+**UI/A11y tests fail immediately with "Could not find a browser instance"**
+- `.auth/staff.json` is missing or stale. Regenerate by running `npm test` (which will fail on UI/A11y steps but create the file via API setup, if setup automation is in place).
+- Alternatively, run `npx playwright test --project=api` alone, then manually log into the Dashboard and save browser state.
+
+**Tests timeout or hang**
+- Check `playwright.config.ts` for timeout settings (default 30s per test).
+- If a test hangs on `page.waitForResponse()`, the mutation may have failed silently. Add logging before the wait:
+  ```ts
+  console.log('Sending mutation...');
+  const response = page.waitForResponse(/* ... */);
+  // mutation logic
+  await response;
+  ```
+
+**Flaky tests (pass sometimes, fail sometimes)**
+- Ensure all assertions use Playwright's `expect()`, not plain JavaScript `assert()` — `expect()` auto-retries.
+- Always call `page.waitForResponse()` before asserting mutations in UI tests (Dashboard uses optimistic UI).
+- Check that test data is properly isolated — never reuse checkout IDs or test-created resources.
 
 ---
 
