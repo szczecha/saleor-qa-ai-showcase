@@ -53,7 +53,7 @@ const channel = process.env.SALEOR_CHANNEL_USD ?? 'default-channel';
 
 const BILLING_ADDRESS = {
   firstName: 'Test',
-  lastName: 'Buyer',
+  lastName: 'API-Buyer',
   streetAddress1: '123 Main St',
   city: 'New York',
   postalCode: '10001',

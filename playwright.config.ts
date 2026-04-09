@@ -14,9 +14,14 @@ export default defineConfig({
   use: {
     baseURL: process.env.SALEOR_DASHBOARD_URL,
     trace: 'on-first-retry',
+    video: 'retain-on-failure', // Change to 'on' to always record
   },
 
   projects: [
+    {
+      name: 'setup',
+      testMatch: '**/setup/*.setup.ts',
+    },
     {
       name: 'api',
       testDir: './tests/api',
@@ -26,16 +31,18 @@ export default defineConfig({
       testDir: './tests/ui',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: '.auth/staff.json',
+        storageState: 'tests/.auth/staff.json',
       },
+      dependencies: ['setup'],
     },
     {
       name: 'a11y',
       testDir: './tests/a11y',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: '.auth/staff.json',
+        storageState: 'tests/.auth/staff.json',
       },
+      dependencies: ['setup'],
     },
   ],
 });

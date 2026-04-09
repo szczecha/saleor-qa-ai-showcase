@@ -1,0 +1,10 @@
+{
+  "respectGitignore": true,
+  "sandbox": {
+    "filesystem": {
+      "denyRead": [
+        ".env"
+      ]
+    }
+  }
+}
