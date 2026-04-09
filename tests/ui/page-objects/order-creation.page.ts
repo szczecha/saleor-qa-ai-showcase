@@ -91,9 +91,10 @@ export class OrderCreationPage extends BasePage {
   }
 
   async finalizeOrder() {
-    const mutationPromise = this.waitForGraphQLMutation('OrderDraftFinalize');
     const finalizeBtn = this.page.getByRole('button', { name: 'Finalize' });
-    await expect(finalizeBtn).toBeEnabled();
+    await expect(finalizeBtn).toBeVisible();
+
+    const mutationPromise = this.waitForGraphQLMutation('OrderDraftFinalize');
     await finalizeBtn.click();
     await mutationPromise;
   }

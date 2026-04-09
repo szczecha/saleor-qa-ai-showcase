@@ -60,7 +60,11 @@ export class ProductCreationPage extends BasePage {
     const attribute = this.page.locator(`[id="${id}"]`);
     await attribute.waitFor({ state: 'visible', timeout: 10000 });
     await attribute.click();
-    await this.page.locator('li, div[role="option"]').filter({ hasText: value }).first().click({ timeout: 10000 });
+
+    // Wait for the dropdown option to appear before clicking
+    const option = this.page.locator('li, div[role="option"]').filter({ hasText: value }).first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
   }
 
   async fillVariantName(name: string) {
